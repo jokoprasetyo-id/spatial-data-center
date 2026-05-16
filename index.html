@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spatial Data Center</title>
+    <title>Portal Data Spasial Tim GIS v2.0</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -133,7 +133,7 @@
         </div>
 
         <div class="p-4 text-[10px] text-gray-400 border-t border-gray-100 bg-gray-50 text-center">
-            &copy; 2026 GIS Analyst • v3.1
+            &copy; 2024 GIS Analyst Portal • v2.1
         </div>
     </aside>
 
@@ -1580,17 +1580,18 @@
 
                     // 4. Listener Perubahan Database secara Real-time (WebSocket)
                     onSnapshot(dbCollection, (snapshot) => {
-                        if (snapshot.empty) {
-                            // Jika database cloud kosong, cukup tampilkan mock data secara lokal (mencegah infinite write loop)
-                            spatialDataLocations = [...defaultData];
-                            renderUI();
-                        } else {
-                            spatialDataLocations = []; // Kosongkan state lokal
+                        // Selalu kosongkan state lokal setiap ada perubahan
+                        spatialDataLocations = []; 
+                        
+                        if (!snapshot.empty) {
+                            // Jika ada data di cloud, masukkan ke peta
                             snapshot.forEach((docItem) => {
-                                spatialDataLocations.push({ id: docItem.id, ...docItem.data() }); // Isi ulang
+                                spatialDataLocations.push({ id: docItem.id, ...docItem.data() });
                             });
-                            renderUI(); // Gambar ulang peta dengan data terbaru
                         }
+                        
+                        // Perbarui UI (Jika database kosong, peta akan benar-benar bersih, tidak ada lagi data contoh)
+                        renderUI(); 
                     }, (error) => {
                         console.error("Firebase Sync Error:", error);
                         showToast("Terjadi gangguan sinkronisasi cloud", true);
