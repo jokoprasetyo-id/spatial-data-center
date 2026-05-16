@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Data Spasial Tim GIS v2.0</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Tambahan: Plugin MarkerCluster CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    
+    <!-- FUNGSI BARU: Plugin Heatmap & MiniMap -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.js"></script>
+
+    <!-- Tambahan: Plugin Geocoder (Fullscreen Plugin Dihapus, menggunakan Native HTML5) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+    <!-- Font Lucide for Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Inter', sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        
+        /* Geser kontrol Leaflet Geocoder agar sejajar dan membentuk Grid dengan tombol custom kita */
+        .leaflet-top.leaflet-left { margin-left: 64px !important; margin-top: 64px !important; }
+        .leaflet-bottom.leaflet-right { margin-bottom: 25px; margin-right: 15px; }
+
+        /* Custom Scrollbar for Sidebar */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
+        .leaflet-popup-content { margin: 0 !important; width: 280px !important; }
+        
+        /* Styling khusus Tooltip Vector GeoJSON */
+        .vector-tooltip { background: rgba(17, 24, 39, 0.9); border: none; color: white; font-weight: bold; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .vector-tooltip::before { border-top-color: rgba(17, 24, 39, 0.9); }
+        
+        /* Tambahan: Pastikan poligon merespon kursor dengan baik & efek transisinya mulus */
+        .provinsi-polygon { pointer-events: visiblePainted !important; transition: fill-opacity 0.2s ease, stroke-width 0.2s ease; cursor: pointer; }
+
+        /* Coordinate display styling */
+        .mouse-coords {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(4px);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-family: monospace;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        @media print {
+            aside, #toggleBtn, #fullscreenAppBtn, #locateBtn, #zoomNasionalBtn, #editorIndicator, #toast, #modalsContainer, .mouse-coords, #rightFilterPanel, #layerFilterBtn { display: none !important; }
+            main { position: absolute; top: 0; left: 0; width: 100vw !important; height: 100vh !important; z-index: 9999; }
+            #map { width: 100vw !important; height: 100vh !important; }
+            .leaflet-control-zoom { display: none !important; }
+        }
+    </style>
+</head>
+<body class="flex">
+
+    <!-- Sidebar List Proyek -->
+    <aside id="sidebar" class="w-80 h-screen bg-white border-r border-gray-200 flex flex-col z-[2000] transition-all duration-300 shrink-0">
+        <div class="p-4 border-b border-gray-100">
+            <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <i data-lucide="map"></i> Spatial Data Center
+            </h1>
+            <p class="text-xs text-gray-500 mt-1">Sistem Repositori Data Spasial</p>
+        </div>
+
+        <!-- Search Box & Utility Icons inside Sidebar -->
+        <div class="p-4 bg-gray-50 border-b border-gray-100">
+            <div class="relative mb-3">
+                <input type="text" id="sidebarSearch" placeholder="Cari proyek atau lokasi..." 
+                       class="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all shadow-sm">
+                <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
+                </div>
+            </div>
+
+            <!-- Tombol Utilitas (Berbentuk Ikon Saja) -->
+            <div class="flex justify-center gap-4 mt-2">
+                <button id="showStatsBtn" title="Insight & Statistik Wilayah" class="p-2.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition-all border border-indigo-100 shadow-sm group">
+                    <i data-lucide="pie-chart" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+                <button id="exportCsvBtn" title="Unduh Katalog CSV" class="p-2.5 bg-gray-100 text-gray-700 hover:bg-gray-700 hover:text-white rounded-lg transition-all border border-gray-200 shadow-sm group">
+                    <i data-lucide="download" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+                <button id="showTableBtn" title="Tabel Data Spasial" class="p-2.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all border border-blue-100 shadow-sm group">
+                    <i data-lucide="table" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- List of items -->
+        <div id="projectList" class="flex-1 overflow-y-auto custom-scrollbar p-2">
+            <!-- Items injected by JS -->
+        </div>
+
+        <!-- Role Toggle & Add Button di bagian bawah sidebar -->
+        <div class="p-4 border-t border-gray-100 bg-white">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Akses Portal</span>
+                <span id="roleBadge" class="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-full font-bold">VIEWER</span>
+            </div>
+            <button id="switchRoleBtn" class="w-full py-2 px-4 bg-blue-50 hover:bg-blue-100 text-blue-600 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                <i data-lucide="shield"></i> Login GIS Analyst
+            </button>
+            <div id="analystActionGroup" class="flex gap-2 mt-2 hidden">
+                <button id="addModeBtn" class="flex-[2] py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm border border-emerald-600">
+                    <i data-lucide="map-pin" class="w-4 h-4"></i> Tambah Data
+                </button>
+                <button id="changePinBtn" class="flex-[1] py-2 px-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm border border-amber-600" title="Ganti PIN">
+                    <i data-lucide="key" class="w-4 h-4"></i> PIN
+                </button>
+            </div>
+        </div>
+
+        <div class="p-4 text-[10px] text-gray-400 border-t border-gray-100 bg-gray-50 text-center">
+            &copy; 2024 GIS Analyst Portal • v2.1
+        </div>
+    </aside>
+
+    <main class="flex-1 relative h-screen w-full overflow-hidden">
+        <div id="map"></div>
+        
+        <!-- Koordinat Mouse di bawah tengah -->
+        <div class="mouse-coords shadow-sm" id="coords">Lat: 0.000, Lng: 0.000</div>
+        
+        <!-- GRID TOMBOL KIRI ATAS -->
+        <!-- Row 1: Button Toggle Sidebar & Fullscreen -->
+        <button id="toggleBtn" class="absolute top-4 left-4 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50" title="Toggle Sidebar">
+            <i data-lucide="menu" class="w-5 h-5 text-gray-700"></i>
+        </button>
+
+        <button id="fullscreenAppBtn" class="absolute top-4 left-16 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 group" title="Layar Penuh (Aplikasi)">
+            <i data-lucide="maximize" class="w-5 h-5 text-gray-700 group-hover:text-blue-600 transition-colors"></i>
+        </button>
+
+        <!-- Row 2: Locate Me (GPS) & Geocoder (dari Leaflet akan berada di sebelahnya) -->
+        <button id="locateBtn" class="absolute top-16 left-4 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 group" title="Cari Lokasi Saya">
+            <i data-lucide="navigation" class="w-5 h-5 text-gray-700 group-hover:text-blue-600 transition-colors"></i>
+        </button>
+
+        <!-- Row 3: Button Zoom Nasional -->
+        <button id="zoomNasionalBtn" class="absolute top-28 left-4 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 group" title="Zoom Seluruh Indonesia">
+            <i data-lucide="globe-2" class="w-5 h-5 text-gray-700 group-hover:text-emerald-600 transition-colors"></i>
+        </button>
+
+        <!-- FUNGSI BARU Row 4: Mode Heatmap -->
+        <button id="heatmapBtn" class="absolute top-40 left-4 z-[1000] bg-white p-2 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 group" title="Mode Heatmap (Kepadatan Data)">
+            <i data-lucide="flame" class="w-5 h-5 text-gray-700 group-hover:text-red-500 transition-colors"></i>
+        </button>
+
+        <!-- UI Editor Mode Indicator di atas peta -->
+        <div id="editorIndicator" class="absolute top-4 left-[50%] transform -translate-x-1/2 z-[1000] bg-emerald-500 text-white px-4 py-2 rounded-full shadow-lg font-medium text-sm flex items-center gap-2 hidden transition-all cursor-pointer hover:bg-emerald-600 animate-bounce">
+            <i data-lucide="edit-3" class="w-4 h-4"></i> Klik di mana saja pada peta untuk set koordinat!
+        </div>
+
+        <!-- Icon Toggle Panel Filter Kanan -->
+        <button id="layerFilterBtn" class="absolute top-4 right-4 z-[1000] bg-white p-2.5 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 group transition-all" title="Filter Layer & Wilayah">
+            <i data-lucide="layers" class="w-5 h-5 text-gray-700 group-hover:text-blue-600"></i>
+        </button>
+
+        <!-- Panel Filter Kanan (Bisa Dilipat/Disembunyikan) -->
+        <div id="rightFilterPanel" class="absolute top-4 right-4 z-[1000] w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden flex flex-col max-h-[85vh] transition-all hidden">
+            <div class="p-3 bg-gray-800 text-white flex justify-between items-center border-b border-gray-700">
+                <span class="text-sm font-bold flex items-center gap-2"><i data-lucide="filter" class="w-4 h-4 text-gray-300"></i> Filter Peta</span>
+                <button id="closeFilterPanelBtn" class="text-gray-400 hover:text-red-400 transition-colors bg-gray-700 hover:bg-gray-600 rounded p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div id="rightFilterContent" class="p-3 overflow-y-auto custom-scrollbar flex-1 bg-white">
+                <h4 class="text-[11px] font-bold text-gray-500 uppercase mb-2">Filter Administratif</h4>
+                <div id="filterWilayahContainer" class="space-y-1.5 mb-4 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" class="wilayah-filter form-checkbox h-3.5 w-3.5 text-blue-500" value="Semua" checked> Tampilkan Semua</label>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" class="wilayah-filter form-checkbox h-3.5 w-3.5 text-blue-500" value="Nasional"> Tingkat Nasional</label>
+                    <!-- Injeksi 38 Provinsi via JavaScript akan masuk ke sini -->
+                </div>
+                
+                <h4 class="text-[11px] font-bold text-gray-500 uppercase mb-2 border-t border-gray-100 pt-3">Kategori Data</h4>
+                <div class="space-y-1.5">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" class="kategori-filter form-checkbox h-3.5 w-3.5 text-emerald-500" value="Vektor" checked> Layer Vektor</label>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" class="kategori-filter form-checkbox h-3.5 w-3.5 text-red-500" value="Raster" checked> Layer Raster</label>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals & Toasts Container -->
+    <div id="modalsContainer">
+        <!-- Overlay -->
+        <div id="modalOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-40 z-[3000] hidden backdrop-blur-sm transition-opacity"></div>
+        
+        <!-- PIN Modal -->
+        <div id="pinModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl p-6 w-80 z-[3001] hidden">
+            <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="lock" class="w-5 h-5 text-blue-500"></i> Otorisasi Analyst</h3>
+            <p class="text-xs text-gray-500 mb-4">Masukkan PIN khusus untuk masuk ke mode pengelolaan database spasial. (Default: 1234)</p>
+            <input type="password" id="pinInput" placeholder="Masukkan PIN..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none mb-4 text-center tracking-[0.5em] font-mono font-bold bg-gray-50">
+            <div class="flex gap-2">
+                <button id="cancelPinBtn" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium transition-colors">Batal</button>
+                <button id="submitPinBtn" class="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium shadow-md transition-colors">Verifikasi</button>
+            </div>
+        </div>
+
+        <!-- FUNGSI BARU: Change PIN Modal -->
+        <div id="changePinModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl p-6 w-80 z-[3001] hidden">
+            <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i data-lucide="key" class="w-5 h-5 text-amber-500"></i> Ganti PIN Analyst</h3>
+            <p class="text-xs text-gray-500 mb-4">Ubah PIN standar dengan PIN rahasia baru Anda.</p>
+            <input type="password" id="newPinInput" placeholder="PIN Baru..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none mb-4 text-center tracking-[0.5em] font-mono font-bold bg-gray-50">
+            <div class="flex gap-2">
+                <button id="cancelChangePinBtn" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium transition-colors">Batal</button>
+                <button id="submitChangePinBtn" class="flex-1 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm font-medium shadow-md transition-colors">Simpan PIN</button>
+            </div>
+        </div>
+
+        <!-- Add Data Form Modal -->
+        <div id="addDataModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl p-6 w-96 z-[3001] hidden max-h-[90vh] overflow-y-auto custom-scrollbar border-t-4 border-emerald-500">
+            <h3 id="modalTitle" class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2"><i data-lucide="file-plus" class="w-5 h-5 text-emerald-500"></i> Formulir Metadata</h3>
+            <p id="modalSubtitle" class="text-xs text-gray-500 mb-4 pb-3 border-b border-gray-100">Koordinat titik berhasil direkam dari peta.</p>
+            
+            <div class="space-y-3">
+                <input type="hidden" id="formDataId" value="">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Proyek <span class="text-red-500">*</span></label>
+                    <input type="text" id="formNamaProyek" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="Contoh: Inventarisasi Pesisir 2024">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Data <span class="text-red-500">*</span></label>
+                    <input type="text" id="formNamaData" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="Contoh: Pemetaan Hutan Mangrove">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Abstrak / Deskripsi Data</label>
+                    <textarea id="formDeskripsi" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50 custom-scrollbar" placeholder="Penjelasan mengenai isi data spasial ini..."></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Kategori</label>
+                        <select id="formKategori" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50">
+                            <option value="Vektor">Vektor</option>
+                            <option value="Raster">Raster</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Format / Tipe</label>
+                        <input type="text" id="formTipe" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="SHP, GeoTIFF, CSV">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Latitude</label>
+                        <input type="text" id="formLat" class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-sm text-gray-600 font-mono" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Longitude</label>
+                        <input type="text" id="formLng" class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-sm text-gray-600 font-mono" readonly>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal Data <span class="text-red-500">*</span></label>
+                        <input type="date" id="formTanggal" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Instansi / Sumber Data</label>
+                        <input type="text" id="formSumber" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="BIG, BPN, Survey Lapangan, dll">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Provinsi / Wilayah</label>
+                        <select id="formWilayah" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50 custom-scrollbar">
+                            <option value="Nasional">Nasional</option>
+                            <!-- Injeksi 38 Provinsi via JavaScript akan masuk ke sini -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Cakupan Skala</label>
+                        <select id="formCakupan" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50">
+                            <option value="Lokal">Lokal (Titik)</option>
+                            <option value="Regional">Regional (Area)</option>
+                            <option value="Nasional">Nasional</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">URL / Link Cloud <span class="text-red-500">*</span></label>
+                    <input type="url" id="formLink" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="https://drive.google.com/...">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Kata Kunci (Tags)</label>
+                        <input type="text" id="formTags" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50" placeholder="pisahkan, dengan, koma">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Hak Akses</label>
+                        <select id="formAkses" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-gray-50">
+                            <option value="Publik">Publik</option>
+                            <option value="Internal">Internal (Terbatas)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-2 mt-6 pt-4 border-t border-gray-100">
+                <button id="cancelDataBtn" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium transition-colors">Batal</button>
+                <button id="saveDataBtn" class="flex-1 py-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white border border-emerald-200 text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-2"><i data-lucide="upload-cloud" class="w-4 h-4"></i> Upload & Simpan</button>
+            </div>
+        </div>
+
+        <!-- Detail Katalog Modal (Perpustakaan Digital View) -->
+        <div id="detailKatalogModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl w-11/12 max-w-3xl z-[3001] hidden flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+                <div class="flex items-center gap-3">
+                    <div class="bg-amber-700 p-2 rounded text-white shadow-sm"><i data-lucide="layers" class="w-5 h-5"></i></div>
+                    <h2 id="detailNamaData" class="text-lg font-bold text-gray-800">Judul Data / Kejadian</h2>
+                </div>
+                <button id="closeDetailBtn" class="text-gray-400 hover:text-red-500 transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="p-0 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                <table class="w-full text-sm text-left border-collapse">
+                    <tbody class="divide-y divide-gray-200">
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 w-1/3 bg-gray-50/50">Lokasi / Wilayah</td><td id="detailWilayahText" class="px-5 py-3 text-gray-800"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Proyek Terkait</td><td id="detailNamaProyekText" class="px-5 py-3 text-gray-800 font-medium text-emerald-700"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Tanggal Update</td><td id="detailUpdateText" class="px-5 py-3 text-gray-800"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Kategori & Tipe</td><td id="detailKategoriTipe" class="px-5 py-3 text-gray-800"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 align-top bg-gray-50/50">Deskripsi / Kronologi</td><td id="detailDeskripsi" class="px-5 py-3 text-gray-700 text-justify leading-relaxed"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Tag / Keterangan Lain</td><td id="detailTags" class="px-5 py-3 text-gray-800"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Sumber Instansi</td><td id="detailSumberText" class="px-5 py-3 text-gray-800"></td></tr>
+                        <tr class="hover:bg-gray-50"><td class="px-5 py-3 font-semibold text-gray-700 bg-gray-50/50">Hak Akses</td><td id="detailAkses" class="px-5 py-3 font-bold"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+                <div id="detailKoordinat" class="text-xs font-mono text-gray-600 bg-gray-200 px-3 py-1.5 rounded font-medium">Lintang: 0, Bujur: 0</div>
+                <div class="flex gap-2">
+                    <button id="closeDetailBtn2" class="px-5 py-2 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100 text-sm font-medium transition-colors">Tutup</button>
+                    <a href="#" id="detailLink" target="_blank" rel="noopener noreferrer" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-bold shadow-md transition-colors flex items-center gap-2"><i data-lucide="download-cloud" class="w-4 h-4"></i> Akses Data Spasial</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Statistik Modal yang Diperluas -->
+        <div id="statsModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl w-96 z-[3001] hidden flex flex-col overflow-hidden border-t-4 border-indigo-500 max-h-[85vh]">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50 shrink-0">
+                <h3 class="text-md font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-5 h-5 text-indigo-500"></i> Repositori Insight</h3>
+                <button id="closeStatsBtn" class="text-gray-400 hover:text-red-500 transition-colors bg-white rounded p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto custom-scrollbar flex-1">
+                <div class="grid grid-cols-2 gap-3 mb-5">
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-center col-span-2 shadow-sm">
+                        <p class="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-1">Total Dataset Aktif</p>
+                        <p id="statTotal" class="text-4xl font-extrabold text-indigo-900">0</p>
+                    </div>
+                    <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center shadow-sm">
+                        <p class="text-[10px] text-emerald-600 font-bold uppercase mb-1">Data Vektor</p>
+                        <p id="statVektor" class="text-xl font-bold text-emerald-800">0</p>
+                    </div>
+                    <div class="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
+                        <p class="text-[10px] text-red-600 font-bold uppercase mb-1">Data Raster</p>
+                        <p id="statRaster" class="text-xl font-bold text-red-800">0</p>
+                    </div>
+                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center shadow-sm">
+                        <p class="text-[10px] text-blue-600 font-bold uppercase mb-1">Akses Publik</p>
+                        <p id="statPublik" class="text-xl font-bold text-blue-800">0</p>
+                    </div>
+                    <div class="bg-orange-50 p-3 rounded-xl border border-orange-100 text-center shadow-sm">
+                        <p class="text-[10px] text-orange-600 font-bold uppercase mb-1">Akses Internal</p>
+                        <p id="statInternal" class="text-xl font-bold text-orange-800">0</p>
+                    </div>
+                </div>
+
+                <!-- Bagian Tambahan: Data Per Provinsi / Wilayah -->
+                <div class="border-t border-gray-100 pt-4">
+                    <h4 class="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-1.5"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Sebaran Data Berdasarkan Wilayah</h4>
+                    <div id="statWilayahContainer" class="space-y-3">
+                        <!-- Progress Bars Wilayah diinjeksi oleh JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel Data Atribut Modal -->
+        <div id="tableModal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl w-11/12 max-w-5xl z-[3001] hidden flex flex-col overflow-hidden border-t-4 border-blue-500" style="max-height: 85vh;">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
+                <div>
+                    <h3 class="text-md font-bold text-gray-800 flex items-center gap-2"><i data-lucide="table-2" class="w-5 h-5 text-blue-500"></i> Tabel Atribut & Data Spasial</h3>
+                    <p class="text-[10px] text-gray-500 mt-0.5">Sistem Pelaporan Tabular Atribut Spasial</p>
+                </div>
+                <button id="closeTableBtn" class="text-gray-400 hover:text-red-500 transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-0 overflow-y-auto flex-1 custom-scrollbar">
+                <table class="w-full text-left border-collapse min-w-[800px]">
+                    <thead class="sticky top-0 bg-gray-100 z-10 shadow-sm">
+                        <tr class="text-gray-600 text-[10px] uppercase tracking-wider">
+                            <th class="p-3 border-b border-gray-200 font-bold">Nama Data / Proyek</th>
+                            <th class="p-3 border-b border-gray-200 font-bold">Kategori / Status</th>
+                            <th class="p-3 border-b border-gray-200 font-bold">Lokasi (Lat, Lng)</th>
+                            <th class="p-3 border-b border-gray-200 font-bold">Waktu Entri/Update</th>
+                            <th class="p-3 border-b border-gray-200 font-bold">Sumber Instansi</th>
+                            <th class="p-3 border-b border-gray-200 font-bold text-center">Navigasi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="text-sm divide-y divide-gray-100">
+                        <!-- Rows injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-500 text-right">
+                Tabel secara dinamis merender data berdasarkan filter yang aktif di sidebar.
+            </div>
+        </div>
+
+    </div>
+    
+    <!-- Toast Message Container -->
+    <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 text-white px-5 py-3 rounded-lg shadow-2xl z-[4000] transform transition-all -translate-y-20 opacity-0 flex items-center gap-3">
+        <i data-lucide="info" class="w-5 h-5 text-blue-400"></i>
+        <span id="toastMsg" class="text-sm font-medium">Pesan di sini</span>
+    </div>
+
+    <!-- Script Diganti menjadi Module agar mendukung Realtime Database (Firebase) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Definisi Basemaps
+        const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        });
+
+        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        });
+
+        const map = L.map('map', {
+            center: [-2.5489, 118.0149],
+            zoom: 5,
+            layers: [osm], // Default basemap
+            zoomControl: false // Matikan kontrol zoom bawaan (kiri atas)
+        });
+
+        // Fitur Pencarian Lokasi Global (Geocoding) di Kiri Atas
+        L.Control.geocoder({
+            defaultMarkGeocode: false,
+            placeholder: "Cari alamat atau daerah...",
+            position: 'topleft' 
+        }).on('markgeocode', function(e) {
+            const bbox = e.geocode.bbox;
+            const poly = L.polygon([
+                bbox.getSouthEast(), bbox.getNorthEast(),
+                bbox.getNorthWest(), bbox.getSouthWest()
+            ]);
+            map.fitBounds(poly.getBounds());
+            showToast(`Menuju ke: ${e.geocode.name}`);
+        }).addTo(map);
+
+        // FUNGSI BARU: Peta Inset (MiniMap) di Kiri Bawah
+        const osm2 = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+        const miniMap = new L.Control.MiniMap(osm2, { 
+            toggleDisplay: true, 
+            position: 'bottomleft',
+            minimized: window.innerWidth < 768 // Otomatis minimize di layar HP
+        }).addTo(map);
+
+        // Pindahkan kontrol Zoom ke kanan bawah agar tidak tertutup tombol custom
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // FUNGSI BARU: Batas Provinsi Interaktif (Hover & Smart Click Filter)
+        const vectorOverlay = L.layerGroup().addTo(map); // Langsung aktif sebagai overlay transparan
+        
+        // Fungsi pembantu untuk merender GeoJSON
+        const renderGeoJSON = (data) => {
+            const geojson = L.geoJSON(data, {
+                style: function(feature) {
+                    return {
+                        fillColor: '#ffffff',
+                        weight: 1.5,
+                        opacity: 0.6,
+                        color: '#3b82f6', // Border biru terang agar profesional
+                        fillOpacity: 0.05, // Dinaikkan sedikit agar Hit-Detection kursor di area tengah pasti terbaca
+                        className: 'provinsi-polygon' // Pasang CSS khusus
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    // MENDUKUNG 38 PROVINSI: Mencari atribut nama dari berbagai format GeoJSON baru yang paling umum
+                    const p = feature.properties;
+                    let provName = p.WADMPR || p.NM_PROV || p.nm_prov || p.PROVINSI || p.Propinsi || p.provinsi || p.NAME_1 || p.name || p.state || "Wilayah";
+                    
+                    // Standarisasi penulisan jika diperlukan oleh sistem filter kita
+                    if(provName.toUpperCase() === "DAERAH ISTIMEWA YOGYAKARTA") provName = "DI Yogyakarta";
+                    if(provName.toUpperCase() === "DKI JAKARTA") provName = "DKI Jakarta";
+
+                    layer.on({
+                        mouseover: function(e) {
+                            const l = e.target;
+                            l.setStyle({
+                                fillColor: '#ffb703', // Efek Hover: Kuning Keemasan
+                                weight: 2.5,
+                                color: '#ea580c', // Oranye untuk border saat dihover
+                                fillOpacity: 0.4 // Sedikit transparan agar satelit tetap tembus
+                            });
+                            
+                            // Bawa poligon ke depan dengan aman agar garis tidak terpotong (Mencegah flicker)
+                            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                                l.bringToFront();
+                            }
+                            
+                            // Tampilkan Tooltip sederhana
+                            l.bindTooltip(provName, {
+                                className: 'vector-tooltip', 
+                                direction: 'top', 
+                                sticky: true
+                            }).openTooltip();
+                        },
+                        mouseout: function(e) {
+                            geojson.resetStyle(e.target);
+                            e.target.closeTooltip();
+                        },
+                        click: function(e) {
+                            // Smart Action: Jika provinsi di klik, otomatis cari di sidebar
+                            document.getElementById('sidebarSearch').value = provName;
+                            renderUI();
+                            if(!isSidebarOpen) toggleSidebar();
+                            showToast(`Memfilter database untuk: ${provName}`);
+                            
+                            // Zoom mulus ke provinsi tersebut
+                            map.fitBounds(e.target.getBounds(), {padding: [50, 50]});
+                        }
+                    });
+                }
+            });
+            vectorOverlay.addLayer(geojson);
+            showToast("Sistem: Lapisan 38 batas provinsi interaktif siap!");
+        };
+
+        // Memuat GeoJSON Polygon 38 Wilayah Indonesia dari repository publik GitHub
+        showToast("Memuat lapisan batas wilayah provinsi...");
+        
+        // Link Utama: Repositori 38 Provinsi terbaru
+        fetch('https://raw.githubusercontent.com/ardian28/GeoJson-Indonesia-38-Provinsi/main/Provinsi/38%20Provinsi%20Indonesia%20-%20Provinsi.json')
+            .then(res => {
+                if(!res.ok) throw new Error("Link Utama Gagal");
+                return res.json();
+            })
+            .then(data => renderGeoJSON(data))
+            .catch(err => {
+                console.log("Mencoba link GeoJSON cadangan...", err);
+                // Link fallback GeoJSON jika link utama tidak bisa diakses
+                fetch('https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json')
+                    .then(res => res.json())
+                    .then(data => renderGeoJSON(data))
+                    .catch(e => {
+                        console.log("Gagal memuat GeoJSON Vektor:", e);
+                        showToast("Gagal memuat batas provinsi dari server.", true);
+                    });
+            });
+
+        const baseMaps = {
+            "OpenStreetMap Peta Dasar": osm,
+            "Citra Satelit": satellite
+        };
+        
+        const overlayMaps = {
+            "Batas Provinsi Interaktif": vectorOverlay
+        };
+        
+        // Pindahkan kontrol Basemap ke kanan bawah agar tidak tertutup panel filter
+        L.control.layers(baseMaps, overlayMaps, { position: 'bottomright' }).addTo(map);
+        L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+
+        const markersLayer = L.markerClusterGroup({
+            maxClusterRadius: 50,
+            iconCreateFunction: function(cluster) {
+                return L.divIcon({ 
+                    html: `<div class="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold border-2 border-white shadow-md text-sm">${cluster.getChildCount()}</div>`,
+                    className: 'custom-cluster-icon',
+                    iconSize: L.point(32, 32)
+                });
+            }
+        });
+        map.addLayer(markersLayer);
+
+        // FUNGSI BARU: Layer Heatmap Kepadatan Data
+        const heatLayer = L.heatLayer([], { radius: 25, blur: 15, maxZoom: 10 });
+        let isHeatmapActive = false;
+
+        document.getElementById('heatmapBtn').onclick = () => {
+            isHeatmapActive = !isHeatmapActive;
+            const btnIcon = document.getElementById('heatmapBtn').querySelector('svg, i');
+
+            if (isHeatmapActive) {
+                btnIcon.classList.remove('text-gray-700');
+                btnIcon.classList.add('text-red-500');
+                map.removeLayer(markersLayer);
+                heatLayer.addTo(map);
+                showToast("Sistem: Peta Kepadatan (Heatmap) Aktif");
+            } else {
+                btnIcon.classList.remove('text-red-500');
+                btnIcon.classList.add('text-gray-700');
+                map.removeLayer(heatLayer);
+                map.addLayer(markersLayer);
+                showToast("Sistem: Kembali ke tampilan Titik (Marker)");
+            }
+            renderUI(); // Perbarui data heatmap
+        };
+
+        // Konfigurasi Database Firebase (Milik Tim SDC-GIS)
+        const appId = 'portal-spasial-app';
+        const firebaseConfig = {
+            apiKey: "AIzaSyBdU8A0AwhyOqRTNH4YfWJD-spCjMIXALU",
+            authDomain: "sdc-gis.firebaseapp.com",
+            projectId: "sdc-gis",
+            storageBucket: "sdc-gis.firebasestorage.app",
+            messagingSenderId: "31094212797",
+            appId: "1:31094212797:web:12b33e2775390af0f78fd4",
+            measurementId: "G-HRNXLTD7Z5"
+        };
+        
+        let db = null;
+        let auth = null;
+        let user = null;
+        let dbCollection = null;
+
+        // State Aplikasi Global
+        let spatialDataLocations = [];
+        let isEditorMode = false;
+        let isAddingPoint = false;
+        let tempMarker = null;
+
+        // Default mock data jika database masih sangat kosong
+        const defaultData = [
+            { id: "1", namaProyek: "Proyek Pesisir Jabar", namaData: "Pemetaan Mangrove Jakarta", deskripsi: "Dataset spasial ini mendeliniasi tutupan area hutan mangrove di pesisir utara Jakarta berdasarkan interpretasi citra satelit resolusi menengah.", tags: "mangrove, pesisir, lingkungan, tutupan lahan", akses: "Publik", kategori: "Vektor", cakupan: "Lokal", wilayah: "DKI Jakarta", warna: "#10b981", koordinat: [-6.11, 106.75], linkCloud: "#", metadata: { tipe: "SHP", update: "10/05/2024", sumber: "KLHK" } },
+            { id: "2", namaProyek: "PUPR Irigasi", namaData: "Citra Drone Waduk Jatiluhur", deskripsi: "Orthophoto resolusi sangat tinggi hasil perekaman drone UAV untuk area bendungan utama Waduk Jatiluhur guna keperluan pemantauan debit dan struktur fisik bendungan.", tags: "drone, uav, waduk, bendungan, infrastruktur", akses: "Internal", kategori: "Raster", cakupan: "Lokal", wilayah: "Jawa Barat", warna: "#ef4444", koordinat: [-6.52, 107.32], linkCloud: "#", metadata: { tipe: "GeoTIFF", update: "15/04/2024", sumber: "Survey Internal" } }
+        ];
+
+        // Helper UI Functions
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = message;
+            
+            // Hapus icon lama (baik itu <i> maupun <svg> yang sudah dirender Lucide)
+            const existingIcon = toast.querySelector('i, svg');
+            if (existingIcon) {
+                existingIcon.remove();
+            }
+            
+            // Buat elemen icon baru
+            const newIcon = document.createElement('i');
+            newIcon.setAttribute('data-lucide', isError ? 'alert-octagon' : 'check-circle-2');
+            newIcon.className = `w-5 h-5 ${isError ? 'text-red-400' : 'text-emerald-400'}`;
+            
+            // Sisipkan sebelum teks pesan
+            toast.insertBefore(newIcon, document.getElementById('toastMsg'));
+            lucide.createIcons();
+            
+            toast.classList.remove('-translate-y-20', 'opacity-0');
+            setTimeout(() => toast.classList.add('-translate-y-20', 'opacity-0'), 3500);
+        }
+
+        const overlay = document.getElementById('modalOverlay');
+        const pinModal = document.getElementById('pinModal');
+        const addDataModal = document.getElementById('addDataModal');
+
+        function togglePinModal(show) {
+            overlay.classList.toggle('hidden', !show);
+            pinModal.classList.toggle('hidden', !show);
+            if(show) {
+                const input = document.getElementById('pinInput');
+                input.value = '';
+                setTimeout(() => input.focus(), 100);
+            }
+        }
+
+        function toggleAddDataModal(show, lat = '', lng = '', editData = null) {
+            overlay.classList.toggle('hidden', !show);
+            addDataModal.classList.toggle('hidden', !show);
+            
+            const modalTitle = document.getElementById('modalTitle');
+            const modalSubtitle = document.getElementById('modalSubtitle');
+
+            if(show) {
+                if(editData) {
+                    modalTitle.innerHTML = `<i data-lucide="edit" class="w-5 h-5 text-blue-500"></i> Edit Data Spasial`;
+                    modalSubtitle.innerHTML = "Perbarui metadata untuk lokasi ini.";
+                    document.getElementById('addDataModal').classList.replace('border-emerald-500', 'border-blue-500');
+                    document.getElementById('saveDataBtn').classList.replace('bg-emerald-500', 'bg-blue-600');
+                    document.getElementById('saveDataBtn').classList.replace('hover:bg-emerald-600', 'hover:bg-blue-700');
+                    document.getElementById('saveDataBtn').innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> Simpan Perubahan';
+
+                    document.getElementById('formDataId').value = editData.id;
+                    document.getElementById('formLat').value = editData.koordinat[0].toFixed(5);
+                    document.getElementById('formLng').value = editData.koordinat[1].toFixed(5);
+                    document.getElementById('formNamaProyek').value = editData.namaProyek || '';
+                    document.getElementById('formNamaData').value = editData.namaData || editData.nama || '';
+                    document.getElementById('formKategori').value = editData.kategori;
+                    document.getElementById('formTipe').value = editData.metadata.tipe;
+                    document.getElementById('formSumber').value = editData.metadata.sumber;
+                    
+                    if(editData.metadata.update) {
+                        const parts = editData.metadata.update.split('/'); // DD/MM/YYYY
+                        if(parts.length === 3) document.getElementById('formTanggal').value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                    }
+
+                    document.getElementById('formWilayah').value = editData.wilayah || 'Nasional';
+                    document.getElementById('formLink').value = editData.linkCloud;
+                    document.getElementById('formDeskripsi').value = editData.deskripsi || '';
+                    document.getElementById('formTags').value = editData.tags || '';
+                    document.getElementById('formAkses').value = editData.akses || 'Publik';
+                    document.getElementById('formCakupan').value = editData.cakupan || 'Lokal';
+                } else {
+                    modalTitle.innerHTML = `<i data-lucide="file-plus" class="w-5 h-5 text-emerald-500"></i> Formulir Metadata`;
+                    modalSubtitle.innerHTML = "Koordinat titik berhasil direkam dari peta.";
+                    document.getElementById('addDataModal').classList.replace('border-blue-500', 'border-emerald-500');
+                    document.getElementById('saveDataBtn').classList.replace('bg-blue-600', 'bg-emerald-500');
+                    document.getElementById('saveDataBtn').classList.replace('hover:bg-blue-700', 'hover:bg-emerald-600');
+                    document.getElementById('saveDataBtn').innerHTML = '<i data-lucide="upload-cloud" class="w-4 h-4"></i> Upload & Simpan';
+
+                    document.getElementById('formDataId').value = '';
+                    document.getElementById('formLat').value = lat.toFixed(5);
+                    document.getElementById('formLng').value = lng.toFixed(5);
+                    document.getElementById('formNamaProyek').value = '';
+                    document.getElementById('formNamaData').value = '';
+                    document.getElementById('formLink').value = '';
+                    document.getElementById('formTipe').value = '';
+                    document.getElementById('formSumber').value = '';
+                    
+                    const t = new Date();
+                    document.getElementById('formTanggal').value = `${t.getFullYear()}-${(t.getMonth()+1).toString().padStart(2,'0')}-${t.getDate().toString().padStart(2,'0')}`;
+
+                    document.getElementById('formWilayah').value = 'Nasional';
+                    document.getElementById('formDeskripsi').value = '';
+                    document.getElementById('formTags').value = '';
+                    document.getElementById('formAkses').value = 'Publik';
+                    document.getElementById('formCakupan').value = 'Lokal';
+                }
+                lucide.createIcons();
+                setTimeout(() => document.getElementById('formNamaProyek').focus(), 100);
+            } else {
+                if(tempMarker && !document.getElementById('formDataId').value) { 
+                    map.removeLayer(tempMarker); tempMarker = null; 
+                }
+            }
+        }
+
+        // FUNGSI BARU: Logika Fullscreen Global menggunakan HTML5 API
+        const fullscreenAppBtn = document.getElementById('fullscreenAppBtn');
+        const fullscreenIcon = fullscreenAppBtn.querySelector('i');
+
+        fullscreenAppBtn.onclick = () => {
+            if (!document.fullscreenElement) {
+                // Minta izin untuk menjadikan SELURUH HALAMAN (termasuk sidebar dan UI Modal) sebagai Fullscreen
+                document.documentElement.requestFullscreen().catch(err => {
+                    showToast("Sistem perangkat Anda tidak mendukung layar penuh", true);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        };
+
+        // Deteksi perubahan status fullscreen (jika user menekan tombol 'Esc' di keyboard)
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenIcon.setAttribute('data-lucide', 'maximize');
+            } else {
+                fullscreenIcon.setAttribute('data-lucide', 'minimize');
+            }
+            lucide.createIcons();
+            
+            // Beri tahu Leaflet untuk mengatur ulang tampilannya secara mulus
+            setTimeout(() => map.invalidateSize(), 200);
+        });
+
+        // Button Logic untuk ganti Role (Viewer <-> Analyst)
+        document.getElementById('switchRoleBtn').onclick = () => {
+            if(isEditorMode) {
+                // Logout dari editor
+                isEditorMode = false;
+                updateRoleUI();
+                showToast("Sesi Analyst Berakhir. Kembali ke mode Viewer.");
+            } else {
+                togglePinModal(true);
+            }
+        };
+
+        document.getElementById('cancelPinBtn').onclick = () => togglePinModal(false);
+        document.getElementById('submitPinBtn').onclick = () => {
+            const pin = document.getElementById('pinInput').value;
+            // FUNGSI BARU: Cek penyimpanan browser. Jika belum pernah diubah, gunakan '1234'
+            const savedPin = localStorage.getItem('gis_analyst_pin') || '1234'; 
+            
+            if(pin === savedPin) { 
+                isEditorMode = true;
+                togglePinModal(false);
+                updateRoleUI();
+                showToast("Otentikasi Berhasil! Mode Kelola Data aktif.");
+            } else {
+                showToast("PIN Tidak Valid!", true);
+            }
+        };
+
+        // FUNGSI BARU: Logika Ganti PIN Custom Modal
+        const changePinModal = document.getElementById('changePinModal');
+        
+        document.getElementById('changePinBtn').onclick = () => {
+            overlay.classList.remove('hidden');
+            changePinModal.classList.remove('hidden');
+            document.getElementById('newPinInput').value = '';
+            setTimeout(() => document.getElementById('newPinInput').focus(), 100);
+        };
+
+        document.getElementById('cancelChangePinBtn').onclick = () => {
+            overlay.classList.add('hidden');
+            changePinModal.classList.add('hidden');
+        };
+
+        document.getElementById('submitChangePinBtn').onclick = () => {
+            const newPin = document.getElementById('newPinInput').value;
+            if (newPin.trim() !== '') {
+                localStorage.setItem('gis_analyst_pin', newPin.trim()); // Simpan ke browser
+                showToast("Berhasil: PIN telah diperbarui ke perangkat ini!");
+                overlay.classList.add('hidden');
+                changePinModal.classList.add('hidden');
+            } else {
+                showToast("Peringatan: PIN tidak boleh kosong!", true);
+            }
+        };
+
+        function updateRoleUI() {
+            const badge = document.getElementById('roleBadge');
+            const btn = document.getElementById('switchRoleBtn');
+            const actionGroup = document.getElementById('analystActionGroup');
+            const indicator = document.getElementById('editorIndicator');
+
+            if(isEditorMode) {
+                badge.innerText = "GIS ANALYST";
+                badge.className = "px-3 py-1 bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] rounded-full font-bold";
+                btn.innerHTML = '<i data-lucide="log-out"></i> Selesai Mengedit';
+                btn.className = "w-full py-2 px-4 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2";
+                actionGroup.classList.remove('hidden'); // Munculkan grup tombol Tambah & Ganti PIN
+            } else {
+                badge.innerText = "VIEWER MODE";
+                badge.className = "px-3 py-1 bg-gray-100 border border-gray-200 text-gray-500 text-[10px] rounded-full font-bold";
+                btn.innerHTML = '<i data-lucide="shield"></i> Login GIS Analyst';
+                btn.className = "w-full py-2 px-4 bg-blue-50 hover:bg-blue-100 text-blue-600 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2";
+                actionGroup.classList.add('hidden'); // Sembunyikan grup tombol
+                indicator.classList.add('hidden');
+                
+                isAddingPoint = false;
+                document.getElementById('map').style.cursor = '';
+                const addModeBtn = document.getElementById('addModeBtn');
+                addModeBtn.classList.replace('bg-orange-500', 'bg-emerald-500');
+                addModeBtn.innerHTML = '<i data-lucide="map-pin" class="w-4 h-4"></i> Tambah Data';
+            }
+            lucide.createIcons();
+            renderUI(); // Render ulang agar tombol Hapus muncul/hilang
+        }
+
+        document.getElementById('addModeBtn').onclick = () => {
+            isAddingPoint = !isAddingPoint;
+            const indicator = document.getElementById('editorIndicator');
+            const mapContainer = document.getElementById('map');
+            const btn = document.getElementById('addModeBtn');
+            
+            if(isAddingPoint) {
+                indicator.classList.remove('hidden');
+                mapContainer.style.cursor = 'crosshair';
+                btn.classList.replace('bg-emerald-500', 'bg-orange-500');
+                btn.innerHTML = '<i data-lucide="x-circle" class="w-4 h-4"></i> Batal Tambah';
+                
+                // Tutup sidebar otomatis di layar kecil (Mobile)
+                if(window.innerWidth < 768 && isSidebarOpen) toggleSidebar();
+                showToast("Arahkan kursor dan klik pada peta untuk menetapkan koordinat.");
+            } else {
+                indicator.classList.add('hidden');
+                mapContainer.style.cursor = '';
+                btn.classList.replace('bg-orange-500', 'bg-emerald-500');
+                btn.innerHTML = '<i data-lucide="map-pin" class="w-4 h-4"></i> Tambah Data';
+                if(tempMarker) { map.removeLayer(tempMarker); tempMarker = null; }
+            }
+            lucide.createIcons();
+        };
+
+        // FUNGSI BARU: Menu Konteks Pintar (Klik Kanan pada Peta)
+        window.copyToClipboard = (lat, lng) => {
+            const text = `${lat}, ${lng}`;
+            navigator.clipboard.writeText(text).then(() => {
+                map.closePopup();
+                showToast("Koordinat berhasil disalin ke clipboard!");
+            });
+        };
+
+        window.quickAddData = (lat, lng) => {
+            map.closePopup();
+            toggleAddDataModal(true, parseFloat(lat), parseFloat(lng));
+        };
+
+        map.on('contextmenu', function(e) {
+            const lat = e.latlng.lat.toFixed(5);
+            const lng = e.latlng.lng.toFixed(5);
+            
+            let popupHtml = `
+                <div class="p-2 text-center">
+                    <h4 class="text-xs font-bold text-gray-800 mb-2 border-b border-gray-100 pb-1">Menu Aksi Cepat</h4>
+                    <p class="text-[10px] font-mono text-gray-600 bg-gray-50 p-1 rounded mb-2">${lat}, ${lng}</p>
+                    <div class="flex flex-col gap-1.5">
+                        <button onclick="window.copyToClipboard('${lat}', '${lng}')" class="w-full py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold rounded transition-colors flex items-center justify-center gap-1">
+                            <i data-lucide="copy" class="w-3 h-3"></i> Salin Koordinat
+                        </button>
+            `;
+
+            if (isEditorMode) {
+                popupHtml += `
+                        <button onclick="window.quickAddData('${lat}', '${lng}')" class="w-full py-1.5 bg-emerald-50 hover:bg-emerald-500 hover:text-white text-emerald-600 text-[10px] font-bold rounded transition-colors flex items-center justify-center gap-1 border border-emerald-100">
+                            <i data-lucide="map-pin" class="w-3 h-3"></i> Tambah Data Di Sini
+                        </button>
+                `;
+            }
+
+            popupHtml += `</div></div>`;
+
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(popupHtml)
+                .openOn(map);
+                
+            setTimeout(() => lucide.createIcons(), 50);
+        });
+
+        map.on('click', function(e) {
+            // Jika bukan editor atau sedang tidak klik mode "Tambah", hiraukan event klik ini
+            if(!isEditorMode || !isAddingPoint) return;
+            
+            // Tempatkan marker sementara
+            if(tempMarker) map.removeLayer(tempMarker);
+            tempMarker = L.marker(e.latlng).addTo(map);
+            
+            // Buka form popup
+            toggleAddDataModal(true, e.latlng.lat, e.latlng.lng);
+        });
+
+        document.getElementById('cancelDataBtn').onclick = () => toggleAddDataModal(false);
+
+        document.getElementById('saveDataBtn').onclick = async () => {
+            const id = document.getElementById('formDataId').value;
+            const namaProyek = document.getElementById('formNamaProyek').value;
+            const namaData = document.getElementById('formNamaData').value;
+            const kategori = document.getElementById('formKategori').value;
+            const lat = parseFloat(document.getElementById('formLat').value);
+            const lng = parseFloat(document.getElementById('formLng').value);
+            const tipe = document.getElementById('formTipe').value || 'Format Terbuka';
+            const sumber = document.getElementById('formSumber').value || 'Internal';
+            const dateVal = document.getElementById('formTanggal').value;
+            const wilayah = document.getElementById('formWilayah').value;
+            const link = document.getElementById('formLink').value;
+            const deskripsi = document.getElementById('formDeskripsi').value || 'Belum ada abstrak atau deskripsi mengenai dataset ini.';
+            const tags = document.getElementById('formTags').value;
+            const akses = document.getElementById('formAkses').value;
+            const cakupan = document.getElementById('formCakupan').value;
+
+            if(!namaProyek) return showToast("Peringatan: Nama Proyek wajib diisi!", true);
+            if(!namaData) return showToast("Peringatan: Nama Data wajib diisi!", true);
+            if(!link) return showToast("Peringatan: Link Penyimpanan Cloud wajib diisi!", true);
+
+            const warna = kategori === 'Vektor' ? '#10b981' : '#ef4444'; // Emerald/Merah
+            
+            let updateDateStr;
+            if(dateVal) {
+                const parts = dateVal.split('-'); // Format HTML input date adalah YYYY-MM-DD
+                updateDateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            } else {
+                // Fallback jika kosong
+                const tgl = new Date();
+                updateDateStr = `${tgl.getDate().toString().padStart(2,'0')}/${(tgl.getMonth()+1).toString().padStart(2,'0')}/${tgl.getFullYear()}`;
+            }
+
+            const newData = {
+                namaProyek, namaData, deskripsi, tags, akses, kategori, cakupan, wilayah, warna, koordinat: [lat, lng], linkCloud: link,
+                metadata: { tipe, update: updateDateStr, sumber }
+            };
+
+            const btn = document.getElementById('saveDataBtn');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = "Menyimpan ke Cloud...";
+            btn.disabled = true;
+
+            if (dbCollection && user) {
+                try {
+                    if(id) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'spatial_data', id), newData);
+                        showToast("Sistem: Data spasial berhasil diperbarui!");
+                    } else {
+                        newData.createdAt = new Date().getTime();
+                        await addDoc(dbCollection, newData);
+                        showToast("Sistem: Data spasial berhasil didistribusikan ke jaringan!");
+                    }
+                } catch (error) {
+                    showToast("Koneksi cloud terputus, gagal merekam data", true);
+                    console.error(error);
+                }
+            } else {
+                // Jalur Fallback Offline / Local Array
+                if(id) {
+                    const index = spatialDataLocations.findIndex(d => d.id === id);
+                    if(index !== -1) {
+                        spatialDataLocations[index] = { ...spatialDataLocations[index], ...newData };
+                    }
+                    showToast("Offline: Data berhasil diperbarui di lokal");
+                } else {
+                    newData.id = "local_" + Math.random().toString(36).substr(2, 9);
+                    newData.createdAt = new Date().getTime();
+                    spatialDataLocations.push(newData);
+                    showToast("Offline: Data direkam di penyimpanan sementara lokal");
+                }
+                renderUI();
+            }
+            
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            
+            // Reset UI State
+            toggleAddDataModal(false);
+            isAddingPoint = false;
+            document.getElementById('editorIndicator').classList.add('hidden');
+            document.getElementById('map').style.cursor = '';
+            
+            const addModeBtn = document.getElementById('addModeBtn');
+            addModeBtn.classList.replace('bg-orange-500', 'bg-emerald-500');
+            addModeBtn.innerHTML = '<i data-lucide="map-pin"></i> Tambah Data Spasial';
+            lucide.createIcons();
+        };
+
+        // Dideklarasikan ke window agar bisa dipanggil dari inline HTML (<button onclick="...">)
+        window.deleteDataCloud = async (id) => {
+            if(dbCollection && user) {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'spatial_data', id));
+                    showToast("Sistem: Repositori data dihapus secara permanen.");
+                } catch(e) { 
+                    showToast("Akses ditolak / Gagal menghapus file", true); 
+                }
+            } else {
+                spatialDataLocations = spatialDataLocations.filter(d => d.id !== id);
+                renderUI();
+                showToast("Sistem: Data offline terhapus.");
+            }
+        };
+
+        window.editDataForm = (id) => {
+            const dataToEdit = spatialDataLocations.find(d => d.id === id);
+            if(dataToEdit) {
+                map.closePopup();
+                toggleAddDataModal(true, null, null, dataToEdit);
+            }
+        };
+
+        const detailKatalogModal = document.getElementById('detailKatalogModal');
+        const closeDetailBtn = document.getElementById('closeDetailBtn');
+        const closeDetailBtn2 = document.getElementById('closeDetailBtn2');
+
+        const closeDetailModal = () => {
+            detailKatalogModal.classList.add('hidden');
+            overlay.classList.add('hidden');
+        };
+        
+        closeDetailBtn.onclick = closeDetailModal;
+        closeDetailBtn2.onclick = closeDetailModal;
+
+        // FUNGSI BARU: Logika Toggle Panel Filter Kanan menjadi Ikon Saja
+        const layerFilterBtn = document.getElementById('layerFilterBtn');
+        const rightFilterPanel = document.getElementById('rightFilterPanel');
+        const closeFilterPanelBtn = document.getElementById('closeFilterPanelBtn');
+
+        layerFilterBtn.onclick = () => {
+            layerFilterBtn.classList.add('hidden');
+            rightFilterPanel.classList.remove('hidden');
+        };
+
+        closeFilterPanelBtn.onclick = () => {
+            rightFilterPanel.classList.add('hidden');
+            layerFilterBtn.classList.remove('hidden');
+        };
+
+        // FUNGSI BARU: Dashboard Statistik & Ekspor CSV
+        const statsModal = document.getElementById('statsModal');
+        
+        document.getElementById('showStatsBtn').onclick = () => {
+            const totalData = spatialDataLocations.length;
+            document.getElementById('statTotal').innerText = totalData;
+            document.getElementById('statVektor').innerText = spatialDataLocations.filter(d => d.kategori === 'Vektor').length;
+            document.getElementById('statRaster').innerText = spatialDataLocations.filter(d => d.kategori === 'Raster').length;
+            document.getElementById('statPublik').innerText = spatialDataLocations.filter(d => d.akses !== 'Internal').length;
+            document.getElementById('statInternal').innerText = spatialDataLocations.filter(d => d.akses === 'Internal').length;
+            
+            // Kalkulasi untuk Sebaran Wilayah / Provinsi
+            const wilayahCounts = {};
+            spatialDataLocations.forEach(d => {
+                const wil = d.wilayah || 'Tidak Diketahui';
+                wilayahCounts[wil] = (wilayahCounts[wil] || 0) + 1;
+            });
+
+            const statWilayahContainer = document.getElementById('statWilayahContainer');
+            statWilayahContainer.innerHTML = ''; // Reset container
+
+            // Urutkan provinsi dari jumlah terbanyak
+            const sortedWilayah = Object.entries(wilayahCounts).sort((a, b) => b[1] - a[1]);
+
+            if (sortedWilayah.length === 0) {
+                statWilayahContainer.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-2">Belum ada data wilayah</p>';
+            } else {
+                sortedWilayah.forEach(([wilayah, count]) => {
+                    const percentage = totalData > 0 ? Math.round((count / totalData) * 100) : 0;
+                    statWilayahContainer.innerHTML += `
+                        <div>
+                            <div class="flex items-center justify-between text-[11px] mb-1">
+                                <span class="text-gray-700 font-medium font-bold">${wilayah}</span>
+                                <span class="text-gray-900 font-bold">${count} <span class="text-gray-400 font-normal">(${percentage}%)</span></span>
+                            </div>
+                            <div class="w-full bg-gray-100 rounded-full h-1.5">
+                                <div class="bg-indigo-400 h-1.5 rounded-full" style="width: ${percentage}%"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            overlay.classList.remove('hidden');
+            statsModal.classList.remove('hidden');
+        };
+        
+        document.getElementById('closeStatsBtn').onclick = () => {
+            statsModal.classList.add('hidden');
+            overlay.classList.add('hidden');
+        };
+
+        document.getElementById('exportCsvBtn').onclick = () => {
+            if(spatialDataLocations.length === 0) return showToast("Gagal: Belum ada data di repositori.", true);
+            
+            // Konversi struktur data ke string CSV
+            let csvContent = "data:text/csv;charset=utf-8,";
+            
+            // Header tabel
+            csvContent += "ID,Nama Proyek,Nama Data,Kategori,Cakupan,Tipe Format,Hak Akses,Latitude,Longitude,Tgl Update,Instansi Sumber,Link Cloud\r\n";
+            
+            // Looping baris data
+            spatialDataLocations.forEach(d => {
+                // Helper fungsi agar data yang mengandung tanda koma (seperti deskripsi) tidak memecah kolom CSV
+                const safeString = (str) => str ? `"${str.replace(/"/g, '""')}"` : '""';
+                
+                let row = [
+                    d.id,
+                    safeString(d.namaProyek),
+                    safeString(d.namaData || d.nama),
+                    d.kategori,
+                    d.cakupan || 'Lokal',
+                    d.metadata.tipe,
+                    d.akses || 'Publik',
+                    d.koordinat[0],
+                    d.koordinat[1],
+                    d.metadata.update,
+                    safeString(d.metadata.sumber),
+                    safeString(d.linkCloud)
+                ];
+                csvContent += row.join(",") + "\r\n";
+            });
+            
+            // Trigger eksekusi unduh file di browser
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `katalog_spasial_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("Tabel CSV berhasil diunduh ke perangkat Anda.");
+        };
+
+        const tableModal = document.getElementById('tableModal');
+        
+        document.getElementById('showTableBtn').onclick = () => {
+            renderTable(); // Gambar data berdasarkan filter saat ini
+            overlay.classList.remove('hidden');
+            tableModal.classList.remove('hidden');
+        };
+        
+        document.getElementById('closeTableBtn').onclick = () => {
+            tableModal.classList.add('hidden');
+            overlay.classList.add('hidden');
+        };
+
+        // Fungsi Helper untuk Parsing String Tanggal 'DD/MM/YYYY' ke Timestamp
+        const parseDateString = (dateStr) => {
+            if(!dateStr) return 0;
+            const parts = dateStr.split('/');
+            if(parts.length !== 3) return 0;
+            return new Date(parts[2], parts[1] - 1, parts[0]).getTime();
+        };
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            // Ambil state filter aktif dari UI sidebar dan panel kanan
+            const searchTerm = document.getElementById('sidebarSearch').value.toLowerCase();
+            const activeKategori = Array.from(document.querySelectorAll('.kategori-filter:checked')).map(cb => cb.value);
+            const isSemuaWilayah = document.querySelector('.wilayah-filter[value="Semua"]').checked;
+            const activeWilayah = Array.from(document.querySelectorAll('.wilayah-filter:checked')).map(cb => cb.value);
+
+            // Saring data untuk ditampilkan di tabel (Hanya menampilkan yang lolos filter peta)
+            let filteredData = spatialDataLocations.filter(loc => {
+                // PERBAIKAN: Masukkan atribut wilayah ke dalam string pencarian
+                const searchString = `${loc.namaProyek||''} ${loc.namaData||loc.nama||''} ${loc.wilayah||''} ${loc.tags||''} ${loc.deskripsi||''}`.toLowerCase();
+                const matchSearch = searchString.includes(searchTerm);
+                const matchKategori = activeKategori.includes(loc.kategori);
+                const matchWilayah = isSemuaWilayah || activeWilayah.includes(loc.wilayah);
+                
+                return matchSearch && matchKategori && matchWilayah;
+            });
+
+            // Urutkan data berdasarkan update terbaru
+            const sortedData = filteredData.sort((a,b) => parseDateString(b.metadata.update) - parseDateString(a.metadata.update));
+
+            sortedData.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-blue-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="p-3">
+                        <p class="font-bold text-gray-800 text-[12px] leading-tight">${d.namaData || d.nama}</p>
+                        <p class="text-[9px] text-emerald-600 font-semibold uppercase mt-0.5">${d.namaProyek || 'Umum'}</p>
+                    </td>
+                    <td class="p-3">
+                        <span class="px-2 py-1 text-[9px] font-bold rounded-full ${d.kategori === 'Vektor' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'} shadow-sm">${d.kategori.toUpperCase()}</span>
+                        ${d.akses === 'Internal' ? '<span class="ml-1 px-1.5 py-0.5 text-[8px] bg-gray-800 text-white rounded font-bold">INT</span>' : ''}
+                    </td>
+                    <td class="p-3 text-[10px] font-mono text-gray-600 bg-gray-50 rounded"><span class="block">${d.koordinat[0].toFixed(5)},</span><span class="block">${d.koordinat[1].toFixed(5)}</span></td>
+                    <td class="p-3 text-[11px] font-medium text-gray-700 flex items-center gap-1.5"><i data-lucide="clock" class="w-3 h-3 text-gray-400"></i> ${d.metadata.update}</td>
+                    <td class="p-3 text-[10px] font-semibold text-gray-600 max-w-[120px] truncate" title="${d.metadata.sumber}">${d.metadata.sumber}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="window.zoomToFromTable('${d.id}')" class="px-3 py-1.5 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors text-[10px] font-bold text-gray-700 shadow-sm flex items-center justify-center gap-1 mx-auto"><i data-lucide="crosshair" class="w-3 h-3"></i> Tinjau Peta</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            lucide.createIcons();
+        }
+
+        window.zoomToFromTable = (id) => {
+            tableModal.classList.add('hidden');
+            overlay.classList.add('hidden');
+            const loc = spatialDataLocations.find(d => d.id === id);
+            if(loc && loc.ref) {
+                let targetZoom = 12; 
+                if (loc.cakupan === 'Nasional') targetZoom = 5;
+                else if (loc.cakupan === 'Regional') targetZoom = 8;
+                map.flyTo(loc.koordinat, targetZoom, { duration: 1.5 });
+                setTimeout(() => loc.ref.openPopup(), 1500);
+            }
+        };
+
+        window.showDetailKatalog = (id) => {
+            const data = spatialDataLocations.find(d => d.id === id);
+            if(data) {
+                map.closePopup();
+                document.getElementById('detailNamaData').innerText = data.namaData || data.nama || 'Data Spasial';
+                document.getElementById('detailNamaProyekText').innerText = data.namaProyek || 'Proyek Umum';
+                document.getElementById('detailWilayahText').innerText = data.wilayah || 'Nasional';
+                document.getElementById('detailDeskripsi').innerText = data.deskripsi || 'Tidak ada abstrak/deskripsi yang tersedia.';
+                document.getElementById('detailKategoriTipe').innerHTML = `<span class="${data.kategori === 'Vektor' ? 'text-emerald-600' : 'text-red-600'} font-bold uppercase">${data.kategori}</span> • ${data.metadata.tipe}`;
+                document.getElementById('detailSumberText').innerText = data.metadata.sumber;
+                document.getElementById('detailUpdateText').innerText = data.metadata.update;
+                document.getElementById('detailKoordinat').innerText = `Lintang: ${data.koordinat[0].toFixed(5)}, Bujur: ${data.koordinat[1].toFixed(5)}`;
+                document.getElementById('detailLink').href = data.linkCloud;
+
+                const badgeAkses = document.getElementById('detailAkses');
+                if(data.akses === 'Internal') {
+                    badgeAkses.innerHTML = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded font-bold text-xs">INTERNAL (TERBATAS)</span>';
+                } else {
+                    badgeAkses.innerHTML = '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded font-bold text-xs">PUBLIK</span>';
+                }
+
+                const tagsContainer = document.getElementById('detailTags');
+                if(data.tags && data.tags.trim() !== '') {
+                    tagsContainer.innerText = data.tags;
+                } else {
+                    tagsContainer.innerHTML = `<span class="text-xs text-gray-400 italic">-</span>`;
+                }
+
+                overlay.classList.remove('hidden');
+                detailKatalogModal.classList.remove('hidden');
+                lucide.createIcons();
+            }
+        };
+
+        function renderUI() {
+            const listContainer = document.getElementById('projectList');
+            const searchTerm = document.getElementById('sidebarSearch').value.toLowerCase();
+            const activeKategori = Array.from(document.querySelectorAll('.kategori-filter:checked')).map(cb => cb.value);
+            const isSemuaWilayah = document.querySelector('.wilayah-filter[value="Semua"]').checked;
+            const activeWilayah = Array.from(document.querySelectorAll('.wilayah-filter:checked')).map(cb => cb.value);
+
+            listContainer.innerHTML = '';
+            markersLayer.clearLayers();
+            const heatPoints = []; // FUNGSI BARU: Penampung koordinat untuk heatmap
+
+            spatialDataLocations.forEach(loc => {
+                const displayNamaProyek = loc.namaProyek || 'Proyek Umum';
+                const displayNamaData = loc.namaData || loc.nama || 'Data Spasial';
+                
+                // PERBAIKAN: Masukkan atribut wilayah (loc.wilayah) ke dalam pencarian agar fitur klik provinsi bisa menemukan datanya
+                const searchString = `${displayNamaProyek} ${displayNamaData} ${loc.wilayah || ''} ${loc.tags || ''} ${loc.deskripsi || ''}`.toLowerCase();
+                const matchSearch = searchString.includes(searchTerm);
+                const matchKategori = activeKategori.includes(loc.kategori);
+                const matchWilayah = isSemuaWilayah || activeWilayah.includes(loc.wilayah);
+
+                if (matchSearch && matchKategori && matchWilayah) {
+                    
+                    // FUNGSI BARU: Tambahkan koordinat ke array heatmap
+                    heatPoints.push([loc.koordinat[0], loc.koordinat[1], 1]);
+
+                    // 1. Plotting Marker di Peta
+                    const marker = L.circleMarker(loc.koordinat, {
+                        radius: 8, fillColor: loc.warna, color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.8
+                    }).addTo(markersLayer);
+
+                    // Khusus mode Editor: tambahkan tombol Hapus dan Edit Data di dalam popup peta
+                    let editBtnHTML = isEditorMode ? 
+                        `<button onclick="window.editDataForm('${loc.id}')" class="flex-1 bg-blue-50 hover:bg-blue-500 hover:text-white text-blue-600 text-xs py-1.5 rounded transition-colors font-semibold flex items-center justify-center gap-1"><i data-lucide="edit-2" class="w-3 h-3"></i> Edit</button>` : '';
+                    let deleteBtnHTML = isEditorMode ? 
+                        `<button onclick="window.deleteDataCloud('${loc.id}')" class="flex-1 bg-red-50 hover:bg-red-500 hover:text-white text-red-600 text-xs py-1.5 rounded transition-colors font-semibold flex items-center justify-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i> Hapus</button>` : '';
+                    
+                    let actionButtons = isEditorMode ? `<div class="mt-2 border-t border-gray-100 pt-2 flex gap-2">${editBtnHTML}${deleteBtnHTML}</div>` : '';
+
+                    const popupContent = `
+                        <div class="p-0 overflow-hidden">
+                            <div style="background-color: ${loc.warna}" class="px-4 py-2 text-white font-bold text-sm flex items-center gap-2">
+                                <i data-lucide="layers" class="w-4 h-4"></i> ${loc.kategori.toUpperCase()}
+                            </div>
+                            <div class="p-4 bg-white">
+                                <p class="text-[10px] uppercase text-emerald-600 font-bold tracking-wider mb-0.5">${displayNamaProyek}</p>
+                                <h3 class="font-bold text-gray-800 text-[15px] mb-2 leading-tight">${displayNamaData}</h3>
+                                <div class="bg-gray-50 rounded p-2 mb-3 text-xs text-gray-600 border border-gray-100">
+                                    <p class="flex justify-between border-b border-gray-200 pb-1 mb-1"><b>Cakupan:</b> <span class="font-bold text-blue-600 uppercase text-[10px]">${loc.cakupan || 'Lokal'}</span></p>
+                                    <p class="flex justify-between border-b border-gray-200 pb-1 mb-1"><b>Format:</b> <span>${loc.metadata.tipe}</span></p>
+                                    <p class="flex justify-between border-b border-gray-200 pb-1 mb-1"><b>Rilis:</b> <span>${loc.metadata.update}</span></p>
+                                    <p class="flex justify-between text-[10px]"><b>Sumber:</b> <span class="truncate max-w-[120px] text-right" title="${loc.metadata.sumber}">${loc.metadata.sumber}</span></p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="window.showDetailKatalog('${loc.id}')" class="flex-1 bg-white border border-gray-200 hover:bg-blue-50 hover:text-blue-600 text-gray-700 text-[11px] py-2 rounded transition-colors font-bold flex items-center justify-center gap-1 shadow-sm">
+                                        <i data-lucide="book-open" class="w-3.5 h-3.5"></i> Katalog
+                                    </button>
+                                    <a href="${loc.linkCloud}" target="_blank" rel="noopener noreferrer" class="flex-1 flex items-center justify-center gap-1 bg-gray-900 hover:bg-blue-600 text-white text-[11px] py-2 rounded shadow transition-colors font-bold">
+                                        <i data-lucide="link-2" class="w-3.5 h-3.5"></i> Akses
+                                    </a>
+                                </div>
+                                ${actionButtons}
+                            </div>
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent);
+                    loc.ref = marker;
+
+                    // 2. Plotting Kartu di Sidebar
+                    const card = document.createElement('div');
+                    card.className = "p-3 mb-2 rounded-lg border border-gray-100 hover:border-blue-300 hover:shadow-md cursor-pointer transition-all bg-white group flex justify-between items-start";
+                    
+                    // Khusus mode Editor: tambahkan icon tong sampah di samping kartu list
+                    let cardDeleteHTML = isEditorMode ? `<button onclick="event.stopPropagation(); window.deleteDataCloud('${loc.id}')" class="text-gray-300 hover:text-red-500 hover:bg-red-50 rounded p-1.5 transition-colors shrink-0" title="Hapus"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '';
+
+                    let badgeAkses = (loc.akses === 'Internal') 
+                        ? `<span class="px-1 py-0.5 rounded text-[8px] font-bold bg-red-100 text-red-600 border border-red-200 ml-1.5 shrink-0" title="Data Internal">INT</span>`
+                        : `<span class="px-1 py-0.5 rounded text-[8px] font-bold bg-emerald-100 text-emerald-600 border border-emerald-200 ml-1.5 shrink-0" title="Data Publik">PUB</span>`;
+
+                    let badgeCakupan = '';
+                    if (loc.cakupan === 'Nasional') badgeCakupan = `<span class="px-1 py-0.5 rounded text-[8px] font-bold bg-blue-100 text-blue-700 border border-blue-200 ml-1 shrink-0">NASIONAL</span>`;
+                    else if (loc.cakupan === 'Regional') badgeCakupan = `<span class="px-1 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-700 border border-purple-200 ml-1 shrink-0">REGIONAL</span>`;
+
+                    card.innerHTML = `
+                        <div class="flex items-start gap-3 flex-1 min-w-0">
+                            <span class="w-2.5 h-2.5 rounded-full mt-1.5 shadow-sm shrink-0" style="background-color: ${loc.warna}"></span>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-[13px] font-bold text-gray-700 group-hover:text-blue-600 leading-tight truncate pr-1" title="${displayNamaData}">${displayNamaData}</h4>
+                                <div class="flex items-center mt-0.5">
+                                    <p class="text-[10px] text-emerald-600 font-semibold truncate flex-1">${displayNamaProyek}</p>
+                                    ${badgeAkses}
+                                    ${badgeCakupan}
+                                </div>
+                                <p class="text-[9px] text-gray-400 mt-1 tracking-wide flex items-center gap-1 truncate"><i data-lucide="hard-drive" class="w-3 h-3"></i> ${loc.kategori} • ${loc.metadata.tipe}</p>
+                            </div>
+                        </div>
+                        ${cardDeleteHTML}
+                    `;
+                    
+                    card.onclick = () => {
+                        // LOGIKA ZOOM PINTAR: Sesuaikan ketinggian kamera dengan cakupan data
+                        let targetZoom = 12; // Default zoom untuk lokasi spesifik (Lokal)
+                        if (loc.cakupan === 'Nasional') targetZoom = 5;       // Zoom out seluruh Indonesia
+                        else if (loc.cakupan === 'Regional') targetZoom = 8;  // Zoom level Provinsi/Pulau
+                        
+                        map.flyTo(loc.koordinat, targetZoom, { duration: 1.5 });
+                        setTimeout(() => loc.ref.openPopup(), 1500); // Buka popup setelah animasi terbang selesai
+                        if(window.innerWidth < 768) toggleSidebar();
+                    };
+                    
+                    listContainer.appendChild(card);
+                }
+            });
+            
+            // FUNGSI BARU: Set ulang titik-titik kepadatan jika mode heatmap menyala
+            if(isHeatmapActive) {
+                heatLayer.setLatLngs(heatPoints);
+            }
+
+            lucide.createIcons(); // Re-render Icon setelah manipulasi DOM
+        }
+
+        // Tracker Koordinat Real-Time di layar bawah
+        map.on('mousemove', function(e) {
+            document.getElementById('coords').innerHTML = `Lat: ${e.latlng.lat.toFixed(4)}, Lng: ${e.latlng.lng.toFixed(4)}`;
+        });
+
+        // Logika Toggle Sidebar Responsive
+        let isSidebarOpen = true;
+        const sidebar = document.getElementById('sidebar');
+        function toggleSidebar() {
+            isSidebarOpen = !isSidebarOpen;
+            sidebar.style.marginLeft = isSidebarOpen ? "0px" : "-320px";
+            
+            // Beritahu Leaflet.js untuk menyesuaikan ulang ukuran dan posisi kontrolnya 
+            // secara dinamis sesuai animasi CSS transition yang berdurasi 300ms
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 300);
+        }
+
+        document.getElementById('toggleBtn').onclick = toggleSidebar;
+        document.getElementById('sidebarSearch').oninput = renderUI;
+        
+        // FUNGSI BARU: Generate 38 Provinsi Indonesia secara Dinamis
+        const daftarProvinsi = [
+            "Aceh", "Sumatera Utara", "Sumatera Barat", "Riau", "Kepulauan Riau", "Jambi", "Bengkulu", "Sumatera Selatan", "Kepulauan Bangka Belitung", "Lampung",
+            "Banten", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "DI Yogyakarta", "Jawa Timur",
+            "Bali", "Nusa Tenggara Barat", "Nusa Tenggara Timur",
+            "Kalimantan Barat", "Kalimantan Tengah", "Kalimantan Selatan", "Kalimantan Timur", "Kalimantan Utara",
+            "Sulawesi Utara", "Gorontalo", "Sulawesi Tengah", "Sulawesi Barat", "Sulawesi Selatan", "Sulawesi Tenggara",
+            "Maluku", "Maluku Utara",
+            "Papua", "Papua Barat", "Papua Selatan", "Papua Tengah", "Papua Pegunungan", "Papua Barat Daya"
+        ];
+
+        const formWilayahDropdown = document.getElementById('formWilayah');
+        const filterWilayahContainer = document.getElementById('filterWilayahContainer');
+
+        daftarProvinsi.forEach(prov => {
+            // Tambah opsi ke dropdown formulir input
+            const option = document.createElement('option');
+            option.value = prov;
+            option.textContent = prov;
+            formWilayahDropdown.appendChild(option);
+
+            // Tambah kotak centang (checkbox) ke filter panel kanan
+            const label = document.createElement('label');
+            label.className = "flex items-center gap-2 cursor-pointer text-sm text-gray-700";
+            label.innerHTML = `<input type="checkbox" class="wilayah-filter form-checkbox h-3.5 w-3.5 text-blue-500" value="${prov}"> Provinsi ${prov}`;
+            filterWilayahContainer.appendChild(label);
+        });
+
+        // Logic Checkbox Filter Kanan
+        document.querySelectorAll('.kategori-filter').forEach(cb => cb.addEventListener('change', renderUI));
+        
+        const semuaWilayahCb = document.querySelector('.wilayah-filter[value="Semua"]');
+        const otherWilayahCbs = Array.from(document.querySelectorAll('.wilayah-filter:not([value="Semua"])'));
+        
+        semuaWilayahCb.addEventListener('change', (e) => {
+            if(e.target.checked) {
+                otherWilayahCbs.forEach(cb => cb.checked = false);
+            } else if(!otherWilayahCbs.some(cb => cb.checked)) {
+                e.target.checked = true; // Cegah uncheck jika tidak ada yang dipilih
+            }
+            renderUI();
+        });
+        
+        otherWilayahCbs.forEach(cb => {
+            cb.addEventListener('change', () => {
+                if(otherWilayahCbs.some(c => c.checked)) {
+                    semuaWilayahCb.checked = false;
+                } else {
+                    semuaWilayahCb.checked = true;
+                }
+                renderUI();
+            });
+        });
+
+        // GPS Tracker Logika
+        const locateBtn = document.getElementById('locateBtn');
+        let userMarker;
+        
+        locateBtn.onclick = () => {
+            // Ambil ikon secara dinamis saat diklik (karena Lucide merubah <i> menjadi <svg>)
+            const currentIcon = locateBtn.querySelector('svg, i');
+            if(currentIcon) currentIcon.classList.add('animate-pulse', 'text-blue-500');
+            
+            // Perintahkan Leaflet mencari lokasi GPS
+            map.locate({setView: true, maxZoom: 14});
+        };
+
+        map.on('locationfound', function(e) {
+            const currentIcon = locateBtn.querySelector('svg, i');
+            if(currentIcon) {
+                currentIcon.classList.remove('animate-pulse', 'text-blue-500');
+                currentIcon.classList.add('text-blue-700');
+            }
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.circleMarker(e.latlng, {
+                radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
+            }).addTo(map);
+            userMarker.bindPopup('<b class="text-sm">Lokasi Anda Saat Ini</b>').openPopup();
+        });
+
+        map.on('locationerror', function(e) {
+            const currentIcon = locateBtn.querySelector('svg, i');
+            if(currentIcon) currentIcon.classList.remove('animate-pulse', 'text-blue-500');
+            
+            showToast("Gagal menemukan lokasi. Pastikan izin GPS/Lokasi di browser menyala.", true);
+        });
+
+        // Fitur Button Zoom Nasional (Mengembalikan fungsi yang sempat terhapus)
+        document.getElementById('zoomNasionalBtn').onclick = () => {
+            // Titik tengah Indonesia dan zoom level yang pas untuk melihat dari Sabang sampai Merauke
+            map.flyTo([-2.5489, 118.0149], 5, { duration: 1.5 });
+            
+            // Jika di HP, otomatis tutup sidebar agar peta terlihat penuh
+            if(window.innerWidth < 768 && isSidebarOpen) toggleSidebar();
+        };
+
+        async function initApp() {
+            lucide.createIcons();
+            
+            if (firebaseConfig) {
+                try {
+                    // 1. Inisialisasi Firebase Module
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    
+                    // 2. Auth Guard - Login Anonim untuk Akses DB Public secara aman
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if(token) {
+                        try {
+                            await signInWithCustomToken(auth, token);
+                        } catch (authError) {
+                            console.warn("Gagal pakai token sistem (wajar jika pakai Firebase sendiri). Beralih ke Anonim...", authError);
+                            await signInAnonymously(auth);
+                        }
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    user = auth.currentUser;
+                    
+                    // 3. Connect Endpoint Firestore Path yang Aman
+                    dbCollection = collection(db, 'artifacts', appId, 'public', 'data', 'spatial_data');
+
+                    showToast("Sistem Terhubung: Sinkronisasi Cloud Real-time Aktif.");
+
+                    // 4. Listener Perubahan Database secara Real-time (WebSocket)
+                    onSnapshot(dbCollection, (snapshot) => {
+                        if (snapshot.empty) {
+                            // Jika database cloud kosong, cukup tampilkan mock data secara lokal (mencegah infinite write loop)
+                            spatialDataLocations = [...defaultData];
+                            renderUI();
+                        } else {
+                            spatialDataLocations = []; // Kosongkan state lokal
+                            snapshot.forEach((docItem) => {
+                                spatialDataLocations.push({ id: docItem.id, ...docItem.data() }); // Isi ulang
+                            });
+                            renderUI(); // Gambar ulang peta dengan data terbaru
+                        }
+                    }, (error) => {
+                        console.error("Firebase Sync Error:", error);
+                        showToast("Terjadi gangguan sinkronisasi cloud", true);
+                    });
+
+                } catch (err) {
+                    console.error("Gagal inisialisasi cloud, beralih ke mode offline memori", err);
+                    
+                    // FUNGSI BARU: Penanganan Error Spesifik untuk Firebase Auth
+                    if (err?.code === 'auth/configuration-not-found' || err?.code === 'auth/operation-not-allowed') {
+                        showToast("Firebase Error: Autentikasi belum diatur!", true);
+                        
+                        // Menambahkan Banner Peringatan Merah di atas layar
+                        const warningBanner = document.createElement('div');
+                        warningBanner.className = "absolute top-0 left-0 w-full bg-red-600 text-white p-3 text-xs font-bold text-center z-[5000] shadow-md flex items-center justify-center gap-2";
+                        warningBanner.innerHTML = `<i data-lucide="alert-triangle" class="w-4 h-4"></i> <span><b>TINDAKAN DIPERLUKAN:</b> Buka Firebase Console > Authentication > Klik 'Get Started' > Buka Tab 'Sign-in method' > Aktifkan 'Anonymous' agar sinkronisasi cloud berjalan.</span>`;
+                        document.body.appendChild(warningBanner);
+                        lucide.createIcons();
+                    } else {
+                        showToast("Gagal terhubung ke Cloud. Berjalan di Mode Offline Lokal.", true);
+                    }
+                    
+                    spatialDataLocations = [...defaultData];
+                    renderUI();
+                }
+            } else {
+                console.log("Firebase konfigurasi tidak tersedia, berjalan offline");
+                spatialDataLocations = [...defaultData];
+                renderUI();
+            }
+        }
+
+        // Mulai aplikasi setelah halaman HTML selesai dimuat
+        window.onload = initApp;
+    </script>
+</body>
+</html>
